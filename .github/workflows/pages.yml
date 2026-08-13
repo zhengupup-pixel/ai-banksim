@@ -37,6 +37,7 @@ jobs:
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_DEMO_MODE: "true"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
