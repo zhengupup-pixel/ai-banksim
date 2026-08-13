@@ -544,6 +544,26 @@ VITE_DEMO_MODE=true VITE_BASE_PATH=/ai-banksim/ pnpm build
 
 Local browser end-to-end verification completed the six-step account-opening flow through the guided button and produced a passing 100-point Examiner report.
 
+## 26. Contextual Competition Customer Simulator (2026-08-13)
+
+- Replaced the three-branch browser-demo customer reply stub with a scenario-grounded simulator covering greetings, identity, account, amount, purpose/source of funds, materials, fees, duration, risk, authorization, loss reporting, activation, and confirmation.
+- Each business type now provides its own customer facts and responses, such as account-opening purpose, cash-deposit source, transfer recipient, card-loss urgency, and replacement-card activation.
+- Unknown questions use message-sensitive fallback variants, while repeated intents vary wording by conversation turn instead of returning one fixed sentence.
+- Added focused frontend unit tests for intent diversity, scenario-specific facts, unknown-input fallbacks, and repeated-intent variation.
+- This deterministic simulator is only for the static GitHub Pages competition build. Server mode continues to route customer messages through CustomerAgent and the configured AIProvider.
+
+Verification:
+
+```bash
+cd frontend
+pnpm test
+# 4 passed
+
+pnpm build
+VITE_DEMO_MODE=true VITE_BASE_PATH=/ai-banksim/ pnpm build
+# Both builds succeeded
+```
+
 ## 17. Alembic Initial Migration Stage (2026-08-13)
 
 - Added a complete Alembic environment and initial revision `20260813_0001` for all 11 domain tables and their current indexes/foreign keys.

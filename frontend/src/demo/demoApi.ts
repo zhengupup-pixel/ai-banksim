@@ -3,8 +3,9 @@ import type {
   LoginResponse, RuleCheckResult, Scenario, ScenarioVersion, StoredTrainingReport,
   TrainingHistoryItem, TrainingPlan, TrainingSession
 } from "../types/training";
+import { simulateCustomerReply } from "./customerSimulator";
 
-type DemoSession = TrainingSession & { actions: string[]; started_at: string; report?: FinalTrainingReport };
+type DemoSession = TrainingSession & { actions: string[]; started_at: string; customer_turns: number; report?: FinalTrainingReport };
 
 const input = (name: string, label: string, input_type: "text" | "number" = "text") => ({ name, label, input_type, required: true });
 const profile = (name: string, persona: string, opening_line: string, facts: Record<string, string | number>) => ({ name, persona, opening_line, disclosed_facts: facts });
@@ -137,14 +138,12 @@ export const demoApi = {
   conversations: async () => [],
   sendCustomerMessage: async (id: number, message: string): Promise<CustomerMessageResponse> => {
     const session = sessions.get(id)!; const scenario = scenarioFor(session); const now = new Date().toISOString();
-    const lower = message.toLowerCase();
-    const factText = Object.entries(scenario.customer_profile.disclosed_facts).map(([key, value]) => `${key}是${value}`).join("，");
-    const reply = lower.includes("证件") || message.includes("信息") ? `好的，${factText}。请帮我按规范办理。` : lower.includes("用途") || message.includes("原因") ? "这是我本人正常办理的生活或经营业务，需要的话我可以配合说明资金用途。" : "好的，我会配合。请问接下来还需要我提供什么材料？";
+    const reply = simulateCustomerReply(scenario, message, session.customer_turns++);
     return { learner_message: { id: nextMessageId++, speaker: "learner", message, created_at: now }, customer_message: { id: nextMessageId++, speaker: "customer", message: reply, created_at: now }, ai_generated: false };
   },
   currentTrainingPlan: async () => demoPlan(),
   generateTrainingPlan: async () => demoPlan(),
-  createSession: async (scenarioId: number): Promise<TrainingSession> => { const created: DemoSession = { id: nextSessionId++, user_id: 1, scenario_id: scenarioId, status: "active", context: {}, actions: [], started_at: new Date().toISOString() }; sessions.set(created.id, created); return created; },
+  createSession: async (scenarioId: number): Promise<TrainingSession> => { const created: DemoSession = { id: nextSessionId++, user_id: 1, scenario_id: scenarioId, status: "active", context: {}, actions: [], started_at: new Date().toISOString(), customer_turns: 0 }; sessions.set(created.id, created); return created; },
   submitAction: async (id: number, action: string, data: Record<string, string | number>) => { const session = sessions.get(id)!; session.actions.push(action); session.context = { ...data }; return evaluate(session, data); },
   completeSession: async (id: number): Promise<FinalTrainingReport> => { const session = sessions.get(id)!; const check = evaluate(session, session.context as Record<string, string | number>); session.status = "completed"; const report: FinalTrainingReport = { session_id: id, status: "completed", completed_at: new Date().toISOString(), passed: check.passed, rule_score: check.score, total_score: check.score, missing_steps: check.missing_steps, violations: check.violations, suggestions: check.suggestions, examiner_report: check.passed ? "Examiner Agent：业务步骤完整、顺序正确，关键身份与金额规则均已满足。建议下一轮尝试更高风险等级场景。" : `Examiner Agent：本次确定性规则得分 ${check.score}。请重点补齐 ${check.missing_steps.length} 个步骤，并复核风险提示后重新训练。` }; session.report = report; return report; },
   askAgent: async (id: number, agentName: string): Promise<AIEvaluation> => { const session = sessions.get(id)!; const check = evaluate(session, session.context as Record<string, string | number>); return { agent_name: agentName, content: check.missing_steps.length ? `Coach Agent：下一步建议先完成“${check.missing_steps[0]}”。业务规则仍由确定性引擎判定。` : "Coach Agent：硬规则步骤已齐全，可以提交训练并查看 Examiner 最终解释。", metadata: { demo: true } }; }
