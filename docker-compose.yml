@@ -1,0 +1,29 @@
+services:
+  backend:
+    build: ./backend
+    environment:
+      APP_ENV: production
+      DATABASE_URL: sqlite:////data/ai_banksim.sqlite3
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      ENABLE_DEV_SEED: "false"
+      CORS_ORIGINS: http://localhost:5173
+    volumes:
+      - banksim_data:/data
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  banksim_data:

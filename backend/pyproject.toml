@@ -1,0 +1,18 @@
+[project]
+name = "ai-banksim-backend"
+version = "0.1.0"
+description = "FastAPI backend for AI BankSim teller training platform"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116.0",
+  "uvicorn[standard]>=0.35.0",
+  "sqlalchemy>=2.0.0",
+  "alembic>=1.13.0",
+  "pydantic-settings>=2.6.0",
+  "httpx>=0.28.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
