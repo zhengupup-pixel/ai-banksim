@@ -514,7 +514,7 @@ VITE_BASE_PATH=/ai-banksim/ VITE_API_BASE_URL=https://api.example.invalid pnpm b
 
 Docker was not available in the development workstation, so image construction must still be verified in CI or on a Docker-enabled machine. A GitHub Pages artifact is not a complete hosted system until `VITE_API_BASE_URL` points to an HTTPS FastAPI deployment whose CORS list includes the Pages origin.
 
-Git release state: local repository initialized on `main`, release commit `2c5abbf`, and public repository `https://github.com/zhengupup-pixel/ai-banksim` created and configured as `origin`. The workstation had neither GitHub SSH credentials nor HTTPS credentials, and GitHub's official CLI device-code endpoint repeatedly timed out, so source push and the resulting CI/Pages run remain pending. Do not create or paste a broad personal access token into project files; authenticate Git safely, then run `git push -u origin main`.
+Git release state: the public source repository is `https://github.com/zhengupup-pixel/ai-banksim`. GitHub cloud CI passed for both backend and frontend, Pages deployment succeeded, and the login UI was verified at `https://zhengupup-pixel.github.io/ai-banksim/`. The Pages subpath required `createBrowserRouter(..., { basename: import.meta.env.BASE_URL })`; this fix is included locally and remotely. Pages remains frontend-only until its repository variable `VITE_API_BASE_URL` points to a public FastAPI deployment.
 
 ## 17. Alembic Initial Migration Stage (2026-08-13)
 
