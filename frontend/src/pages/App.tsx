@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, CalendarRange, CheckCircle2, FileCheck2, History, Landmark, MessageCircle, Play, RefreshCw, Send, ShieldCheck, TrendingUp } from "lucide-react";
+import { Bot, CheckCircle2, ChevronDown, FileCheck2, Landmark, MessageCircle, Play, Send, ShieldCheck } from "lucide-react";
 import { api, isDemoMode, setAccessToken } from "../api/client";
 import { demoUser } from "../demo/demoApi";
-import { Metric } from "../components/Metric";
 import { TeacherDashboard } from "./TeacherDashboard";
 import type { AuthUser, ConversationMessage, FinalTrainingReport, RuleCheckResult, TrainingSession } from "../types/training";
 
@@ -58,25 +57,6 @@ export function App() {
     enabled: Boolean(authUser)
   });
 
-  const history = useQuery({
-    queryKey: ["training-history", authUser?.id],
-    queryFn: () => api.trainingHistory(),
-    enabled: authUser?.role === "student"
-  });
-
-  const ability = useQuery({
-    queryKey: ["ability-analysis", authUser?.id],
-    queryFn: () => api.abilityAnalysis(),
-    enabled: authUser?.role === "student"
-  });
-
-  const trainingPlan = useQuery({
-    queryKey: ["training-plan", authUser?.id],
-    queryFn: () => api.currentTrainingPlan(),
-    enabled: authUser?.role === "student",
-    retry: false
-  });
-
   const login = useMutation({
     mutationFn: () => api.login(username, password),
     onSuccess: (response) => {
@@ -112,20 +92,23 @@ export function App() {
     }
   });
 
-  const submitAction = useMutation({
-    mutationFn: (actionType: string) => {
-      if (!session) throw new Error("请先开始训练。");
-      return api.submitAction(session.id, actionType, businessData);
-    },
-    onSuccess: setLatestCheck
-  });
-
   const askCoach = useMutation({
     mutationFn: () => {
       if (!session) throw new Error("请先开始训练。");
       return api.askAgent(session.id, "coach", "请根据我当前训练表现给一个下一步提示。");
     },
     onSuccess: (response) => setAgentReply(response.content)
+  });
+
+  const submitAction = useMutation({
+    mutationFn: (actionType: string) => {
+      if (!session) throw new Error("请先开始训练。");
+      return api.submitAction(session.id, actionType, businessData);
+    },
+    onSuccess: (check) => {
+      setLatestCheck(check);
+      askCoach.mutate();
+    }
   });
 
   const completeSession = useMutation({
@@ -141,16 +124,12 @@ export function App() {
     }
   });
 
-  const loadReport = useMutation({
-    mutationFn: (sessionId: number) => api.trainingReport(sessionId),
-    onSuccess: (report) => setFinalReport(report)
-  });
-
   const talkToCustomer = useMutation({
-    mutationFn: () => {
+    mutationFn: (presetMessage?: string) => {
       if (!session) throw new Error("请先开始训练。");
-      if (!customerInput.trim()) throw new Error("请输入要对客户说的话。");
-      return api.sendCustomerMessage(session.id, customerInput.trim());
+      const message = presetMessage?.trim() || customerInput.trim();
+      if (!message) throw new Error("请输入要对客户说的话。");
+      return api.sendCustomerMessage(session.id, message);
     },
     onSuccess: (response) => {
       setConversation((current) => [...current, response.learner_message, response.customer_message]);
@@ -158,35 +137,38 @@ export function App() {
     }
   });
 
-  const generatePlan = useMutation({
-    mutationFn: () => api.generateTrainingPlan(),
-    onSuccess: (plan) => queryClient.setQueryData(["training-plan", authUser?.id], plan)
-  });
-
   const isCompleted = session?.status === "completed";
   const canTrain = authUser?.role === "student";
-  const mutationError = createSession.error ?? submitAction.error ?? askCoach.error ?? completeSession.error ?? loadReport.error ?? talkToCustomer.error ?? generatePlan.error;
+  const mutationError = createSession.error ?? submitAction.error ?? askCoach.error ?? completeSession.error ?? talkToCustomer.error;
 
-  const completedCount = useMemo(() => {
-    if (!selectedScenario || !latestCheck) return 0;
-    return selectedScenario.expected_steps.filter((step) => !latestCheck.missing_steps.includes(step)).length;
-  }, [latestCheck, selectedScenario]);
-
-  const allSteps = useMemo(
+  const activeSteps = useMemo(
     () => {
       if (!selectedScenario) return [];
       const steps = [...selectedScenario.expected_steps];
       for (const conditional of selectedScenario.rule_policy.conditional_steps ?? []) {
+        const actual = businessData[conditional.field];
+        const expected = conditional.value;
+        const applies = conditional.operator === "gte" ? Number(actual) >= Number(expected)
+          : conditional.operator === "gt" ? Number(actual) > Number(expected)
+            : conditional.operator === "lte" ? Number(actual) <= Number(expected)
+              : conditional.operator === "lt" ? Number(actual) < Number(expected)
+                : actual === expected;
+        if (!applies) continue;
         const targetIndex = conditional.before_step ? steps.indexOf(conditional.before_step) : -1;
         steps.splice(targetIndex >= 0 ? targetIndex : steps.length, 0, conditional.required_step);
       }
-      for (const availableStep of selectedScenario.rule_policy.available_steps ?? []) {
-        if (!steps.includes(availableStep)) steps.push(availableStep);
-      }
       return steps;
     },
-    [selectedScenario]
+    [businessData, selectedScenario]
   );
+
+  const completedSteps = useMemo(() => {
+    if (!latestCheck) return [];
+    return activeSteps.filter((step) => !latestCheck.missing_steps.includes(step));
+  }, [activeSteps, latestCheck]);
+
+  const nextStep = activeSteps.find((step) => !completedSteps.includes(step));
+  const progress = activeSteps.length ? Math.round(completedSteps.length / activeSteps.length * 100) : 0;
 
   const chooseScenario = (scenarioId: number) => {
     setSelectedScenarioId(scenarioId);
@@ -251,11 +233,11 @@ export function App() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-6xl gap-5 px-6 py-6 lg:grid-cols-[1.3fr_0.7fr]">
-        <div className="space-y-5">
+      <section className="mx-auto max-w-4xl space-y-5 px-6 py-6">
           {isDemoMode && (
-            <div className="border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-800">
-              <strong>Agent 产品比赛演示模式</strong>：无需账号，训练数据仅保留在当前页面。规则评分由浏览器内确定性引擎执行；客户、教练与考官响应为可复现演示，真实 DeepSeek Provider 保留在服务端源码中。
+            <div className="flex items-center gap-3 border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+              <ShieldCheck size={18} className="shrink-0" />
+              <span><strong>免登录比赛体验</strong> · 按引导完成业务，规则引擎评分，Agent 自动辅导。</span>
             </div>
           )}
           {mutationError && (
@@ -263,12 +245,13 @@ export function App() {
               {mutationError instanceof Error ? mutationError.message : "操作失败，请稍后重试。"}
             </div>
           )}
-          <div className="panel">
-            <div className="mb-5">
-              <label className="text-xs font-medium uppercase tracking-wide text-slate-400" htmlFor="scenario-select">训练场景</label>
+          <div className="panel p-6">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-end">
+              <div className="min-w-0 flex-1">
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-400" htmlFor="scenario-select">选择训练场景</label>
               <select
                 id="scenario-select"
-                className="mt-2 w-full border border-slate-200 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-bank"
+                  className="mt-2 w-full border border-slate-200 bg-white px-3 py-3 text-sm font-medium text-ink outline-none focus:border-bank"
                 value={selectedScenario?.id ?? ""}
                 disabled={Boolean(session && !isCompleted)}
                 onChange={(event) => chooseScenario(Number(event.target.value))}
@@ -277,103 +260,81 @@ export function App() {
                   <option key={scenario.id} value={scenario.id}>{scenario.title} · {scenario.difficulty}</option>
                 ))}
               </select>
-            </div>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-ink">{selectedScenario?.title ?? "加载场景中"}</h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{selectedScenario?.description}</p>
+                <p className="mt-3 text-sm leading-6 text-slate-500">{selectedScenario?.description}</p>
               </div>
               <button
-                className="inline-flex items-center gap-2 bg-bank px-4 py-2 text-sm font-medium text-white disabled:bg-slate-300"
-                disabled={!selectedScenario || !canTrain || createSession.isPending}
+                className="inline-flex shrink-0 items-center justify-center gap-2 bg-bank px-6 py-3 text-sm font-medium text-white disabled:bg-slate-300"
+                disabled={!selectedScenario || !canTrain || Boolean(session && !isCompleted) || createSession.isPending}
                 onClick={() => selectedScenario && createSession.mutate(selectedScenario.id)}
               >
                 <Play size={16} />
-                {canTrain ? "开始训练" : "仅学生可训练"}
+                {session && isCompleted ? "再练一次" : session ? "训练进行中" : "开始训练"}
               </button>
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <Metric label={finalReport ? "最终分数" : "当前分数"} value={finalReport ? `${finalReport.total_score}` : latestCheck ? `${latestCheck.score}` : "--"} />
-            <Metric label="已完成步骤" value={selectedScenario ? `${completedCount}/${selectedScenario.expected_steps.length}` : "--"} />
-            <Metric label="训练状态" value={isCompleted ? "已完成" : session ? "进行中" : "未开始"} />
-          </div>
-
-          <div className="panel">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-2"><MessageCircle size={18} className="text-bank" /><h2 className="text-base font-semibold text-ink">AI 客户 · {selectedScenario?.customer_profile.name}</h2></div>
-              <span className="text-xs text-slate-400">{selectedScenario?.customer_profile.persona}</span>
-            </div>
-            <div className="mt-4 max-h-72 space-y-3 overflow-y-auto bg-slate-50 p-4">
-              {conversation.length === 0 && <div className="max-w-[85%] bg-white px-3 py-2 text-sm leading-6 text-slate-600">{selectedScenario?.customer_profile.opening_line}</div>}
-              {conversation.map((message) => (
-                <div key={message.id} className={`flex ${message.speaker === "learner" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[85%] px-3 py-2 text-sm leading-6 ${message.speaker === "learner" ? "bg-bank text-white" : "bg-white text-slate-600"}`}>{message.message}</div>
+          {session && (
+            <>
+              <div className="panel p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-400">训练进度</p>
+                    <h2 className="mt-1 text-xl font-semibold text-ink">{isCompleted ? "训练完成" : nextStep ? `下一步：${stepLabels[nextStep] ?? nextStep}` : "流程已完成，可以提交"}</h2>
+                  </div>
+                  <div className="text-right"><p className="text-2xl font-semibold text-bank">{finalReport?.total_score ?? latestCheck?.score ?? progress}</p><p className="text-xs text-slate-400">{finalReport ? "最终得分" : latestCheck ? "当前得分" : "完成度"}</p></div>
                 </div>
-              ))}
-            </div>
-            <div className="mt-3 flex gap-2">
-              <input
-                className="min-w-0 flex-1 border border-slate-200 px-3 py-2 text-sm outline-none focus:border-bank disabled:bg-slate-50"
-                placeholder="以柜员身份与客户沟通……"
-                value={customerInput}
-                disabled={!session || isCompleted || talkToCustomer.isPending}
-                onChange={(event) => setCustomerInput(event.target.value)}
-                onKeyDown={(event) => { if (event.key === "Enter" && customerInput.trim()) talkToCustomer.mutate(); }}
-              />
-              <button className="inline-flex items-center gap-2 bg-bank px-4 py-2 text-sm text-white disabled:bg-slate-300" disabled={!session || isCompleted || !customerInput.trim() || talkToCustomer.isPending} onClick={() => talkToCustomer.mutate()}><Send size={15} />发送</button>
-            </div>
-            <p className="mt-2 text-xs text-slate-400">客户对话用于情景模拟和解释上下文，不会改变规则引擎判定。</p>
-          </div>
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-bank transition-all" style={{ width: `${progress}%` }} /></div>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {activeSteps.map((step, index) => {
+                    const done = completedSteps.includes(step);
+                    const current = step === nextStep;
+                    return <span key={step} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs ${done ? "bg-emerald-50 text-emerald-700" : current ? "bg-sky-50 text-bank" : "bg-slate-50 text-slate-400"}`}>{done ? <CheckCircle2 size={13} /> : <span>{index + 1}</span>}{stepLabels[step] ?? step}</span>;
+                  })}
+                </div>
+              </div>
 
-          <div className="panel">
-            <h2 className="text-base font-semibold text-ink">业务信息</h2>
-            <p className="mt-1 text-sm text-slate-500">规则引擎将使用这些字段核验金额、余额和客户身份。</p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              {selectedScenario?.rule_policy.inputs.map((input) => (
-                <label key={input.name} className="text-sm text-slate-600">
-                  <span>{input.label}{input.required ? " *" : ""}</span>
+              <div className="panel p-6">
+                <div className="flex items-center gap-2"><MessageCircle size={18} className="text-bank" /><h2 className="font-semibold text-ink">AI 客户 · {selectedScenario?.customer_profile.name}</h2></div>
+                <div className="mt-4 space-y-3 bg-slate-50 p-4">
+                  {conversation.length === 0 && <p className="text-sm leading-6 text-slate-600">“{selectedScenario?.customer_profile.opening_line}”</p>}
+                  {conversation.slice(-2).map((message) => <p key={message.id} className={`text-sm leading-6 ${message.speaker === "learner" ? "text-right text-bank" : "text-slate-600"}`}>{message.message}</p>)}
+                </div>
+                {!isCompleted && conversation.length === 0 && <button className="mt-3 border border-bank px-4 py-2 text-sm text-bank" disabled={talkToCustomer.isPending} onClick={() => talkToCustomer.mutate("您好，我先核对您的业务需求和身份信息。")}>确认客户需求</button>}
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs text-slate-400">自由对话（可选）</summary>
+                  <div className="mt-3 flex gap-2">
                   <input
-                    className="mt-2 w-full border border-slate-200 px-3 py-2 text-sm text-ink outline-none focus:border-bank disabled:bg-slate-50"
-                    type={input.input_type}
-                    min={input.minimum ?? undefined}
-                    max={input.maximum ?? undefined}
-                    value={businessData[input.name] ?? ""}
-                    disabled={!session || isCompleted}
-                    onChange={(event) => updateBusinessData(input.name, event.target.value, input.input_type)}
-                  />
-                </label>
-              ))}
-            </div>
-          </div>
+                      className="min-w-0 flex-1 border border-slate-200 px-3 py-2 text-sm outline-none focus:border-bank"
+                      placeholder="补充询问客户……" value={customerInput} disabled={isCompleted || talkToCustomer.isPending}
+                      onChange={(event) => setCustomerInput(event.target.value)}
+                      onKeyDown={(event) => { if (event.key === "Enter" && customerInput.trim()) talkToCustomer.mutate(undefined); }} />
+                    <button className="bg-bank px-3 text-white disabled:bg-slate-300" disabled={isCompleted || !customerInput.trim() || talkToCustomer.isPending} onClick={() => talkToCustomer.mutate(undefined)} aria-label="发送消息"><Send size={15} /></button>
+                  </div>
+                </details>
+              </div>
 
-          <div className="panel">
-            <h2 className="text-base font-semibold text-ink">柜面操作</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {allSteps.map((step) => (
-                <button
-                  key={step}
-                  className="flex items-center justify-between border border-slate-200 px-4 py-3 text-left text-sm hover:border-bank disabled:bg-slate-50 disabled:text-slate-400"
-                  disabled={!session || isCompleted || submitAction.isPending}
-                  onClick={() => submitAction.mutate(step)}
-                >
-                  <span>{stepLabels[step] ?? step}</span>
-                  <CheckCircle2 size={16} className="text-bank" />
-                </button>
-              ))}
-            </div>
-            <div className="mt-5 flex justify-end border-t border-slate-100 pt-4">
-              <button
-                className="inline-flex items-center gap-2 bg-ink px-4 py-2 text-sm font-medium text-white disabled:bg-slate-300"
-                disabled={!session || isCompleted || completeSession.isPending}
-                onClick={() => completeSession.mutate()}
-              >
-                <FileCheck2 size={16} />
-                {completeSession.isPending ? "生成报告中" : "完成并提交训练"}
-              </button>
-            </div>
-          </div>
+              <details className="panel p-6">
+                <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-ink">业务资料已自动填写 <ChevronDown size={17} className="text-slate-400" /></summary>
+                <p className="mt-2 text-sm text-slate-500">演示数据已准备好；展开可修改并测试规则异常。</p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  {selectedScenario?.rule_policy.inputs.map((input) => <label key={input.name} className="text-sm text-slate-600"><span>{input.label}</span><input className="mt-2 w-full border border-slate-200 px-3 py-2 text-sm text-ink outline-none focus:border-bank disabled:bg-slate-50" type={input.input_type} min={input.minimum ?? undefined} max={input.maximum ?? undefined} value={businessData[input.name] ?? ""} disabled={isCompleted} onChange={(event) => updateBusinessData(input.name, event.target.value, input.input_type)} /></label>)}
+                </div>
+              </details>
+
+              {!isCompleted && (
+                <div className="panel border-bank p-6 text-center">
+                  <p className="text-sm text-slate-500">{nextStep ? "系统已根据业务规则定位下一项标准操作" : "所有必要操作已完成"}</p>
+                  {nextStep ? (
+                    <button className="mt-4 inline-flex w-full items-center justify-center gap-2 bg-bank px-6 py-4 font-medium text-white disabled:bg-slate-300 sm:w-auto sm:min-w-72" disabled={submitAction.isPending} onClick={() => submitAction.mutate(nextStep)}><CheckCircle2 size={18} />{submitAction.isPending ? "规则检查中…" : `执行：${stepLabels[nextStep] ?? nextStep}`}</button>
+                  ) : (
+                    <button className="mt-4 inline-flex w-full items-center justify-center gap-2 bg-ink px-6 py-4 font-medium text-white disabled:bg-slate-300 sm:w-auto sm:min-w-72" disabled={completeSession.isPending} onClick={() => completeSession.mutate()}><FileCheck2 size={18} />{completeSession.isPending ? "生成报告中…" : "提交并生成最终报告"}</button>
+                  )}
+                  <div className="mx-auto mt-4 max-w-xl text-sm leading-6 text-slate-600"><span className="font-medium text-bank"><Bot size={15} className="mr-1 inline" />Coach Agent：</span>{agentReply || "开始操作后，我会自动解释下一步。"}</div>
+                  {latestCheck?.violations.length ? <p className="mt-2 text-sm text-amber-700">规则提醒：{latestCheck.violations.join("；")}</p> : null}
+                </div>
+              )}
+            </>
+          )}
 
           {finalReport && (
             <div className="panel border-bank">
@@ -396,99 +357,6 @@ export function App() {
             </div>
           )}
 
-          {canTrain && (
-            <div className="panel">
-              <div className="flex items-center gap-2"><History size={18} className="text-bank" /><h2 className="text-base font-semibold text-ink">训练历史</h2></div>
-              <div className="mt-4 space-y-3">
-                {!history.data?.length && <p className="text-sm text-slate-500">暂无训练记录。</p>}
-                {history.data?.slice(0, 8).map((item) => (
-                  <div key={item.session_id} className="flex items-center justify-between gap-4 border-b border-slate-100 pb-3 text-sm last:border-0">
-                    <div>
-                      <p className="font-medium text-ink">{item.scenario_title}</p>
-                      <p className="mt-1 text-xs text-slate-400">{new Date(item.started_at).toLocaleString()} · {item.status === "completed" ? "已完成" : "进行中"}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className={item.passed === true ? "text-emerald-700" : item.passed === false ? "text-amber-700" : "text-slate-400"}>{item.total_score ?? "--"} 分</span>
-                      {item.status === "completed" && <button className="border border-slate-200 px-3 py-1 text-bank hover:border-bank" onClick={() => loadReport.mutate(item.session_id)}>查看报告</button>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <aside className="space-y-5">
-          {canTrain && (
-            <div className="panel">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2"><CalendarRange size={18} className="text-bank" /><h2 className="text-base font-semibold text-ink">下一步训练计划</h2></div>
-                <button className="inline-flex items-center gap-1 border border-slate-200 px-2 py-1 text-xs text-bank hover:border-bank disabled:text-slate-300" disabled={generatePlan.isPending} onClick={() => generatePlan.mutate()}><RefreshCw size={13} />{trainingPlan.data ? "重新生成" : "生成计划"}</button>
-              </div>
-              {!trainingPlan.data && <p className="mt-3 text-sm leading-6 text-slate-500">根据确定性成绩与薄弱项生成下一轮训练顺序。</p>}
-              {trainingPlan.data && (
-                <>
-                  <div className="mt-4 space-y-3">
-                    {trainingPlan.data.items.map((item) => (
-                      <button key={`${trainingPlan.data.id}-${item.priority}`} className="w-full border border-slate-100 p-3 text-left hover:border-bank" onClick={() => chooseScenario(item.scenario_id)}>
-                        <div className="flex items-center justify-between text-sm"><span className="font-medium text-ink">{item.priority}. {item.scenario_title}</span><span className="text-bank">目标 {item.target_score}</span></div>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">{item.reason}</p>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-4 border-t border-slate-100 pt-3"><p className="text-xs font-medium text-slate-400">PlannerAgent 解释</p><p className="mt-2 text-xs leading-5 text-slate-600">{trainingPlan.data.planner_explanation}</p></div>
-                </>
-              )}
-            </div>
-          )}
-          {canTrain && ability.data && (
-            <div className="panel">
-              <div className="flex items-center gap-2"><TrendingUp size={18} className="text-bank" /><h2 className="text-base font-semibold text-ink">能力分析</h2></div>
-              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                <div className="bg-slate-50 p-2"><p className="text-lg font-semibold text-ink">{ability.data.completed_sessions}</p><p className="text-xs text-slate-400">完成次数</p></div>
-                <div className="bg-slate-50 p-2"><p className="text-lg font-semibold text-ink">{ability.data.average_score}</p><p className="text-xs text-slate-400">平均分</p></div>
-                <div className="bg-slate-50 p-2"><p className="text-lg font-semibold text-ink">{ability.data.pass_rate}%</p><p className="text-xs text-slate-400">通过率</p></div>
-              </div>
-              <div className="mt-4 space-y-3">
-                {ability.data.business_abilities.map((item) => (
-                  <div key={item.business_type}>
-                    <div className="flex justify-between text-xs text-slate-500"><span>{item.scenario_title}</span><span>{item.average_score}</span></div>
-                    <div className="mt-1 h-2 bg-slate-100"><div className="h-2 bg-bank" style={{ width: `${Math.min(item.average_score, 100)}%` }} /></div>
-                  </div>
-                ))}
-              </div>
-              {ability.data.weaknesses.length > 0 && <div className="mt-4 border-t border-slate-100 pt-3"><p className="text-xs font-medium text-slate-400">主要薄弱项</p>{ability.data.weaknesses.slice(0, 3).map((item) => <p key={item.category} className="mt-2 text-xs leading-5 text-slate-600">{item.category} × {item.count}</p>)}</div>}
-            </div>
-          )}
-          <div className="panel">
-            <h2 className="text-base font-semibold text-ink">规则检查</h2>
-            <div className="mt-3 text-sm leading-6 text-slate-600">
-              {!latestCheck && "提交一次柜面操作后，这里会显示确定性业务规则检查结果。"}
-              {latestCheck && (
-                <>
-                  <p>{latestCheck.passed ? "流程已满足当前规则。" : "流程仍有缺失或风险。"}</p>
-                  <p>缺失步骤：{latestCheck.missing_steps.map((step) => stepLabels[step] ?? step).join("、") || "无"}</p>
-                  <p>风险违规：{latestCheck.violations.join("、") || "无"}</p>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-ink">AI 教练</h2>
-              <button
-                className="inline-flex items-center gap-2 border border-bank px-3 py-2 text-sm font-medium text-bank disabled:border-slate-200 disabled:text-slate-400"
-                disabled={!session || isCompleted || askCoach.isPending}
-                onClick={() => askCoach.mutate()}
-              >
-                <Bot size={16} />
-                获取提示
-              </button>
-            </div>
-            <p className="mt-3 text-sm leading-6 text-slate-600">{agentReply || (isDemoMode ? "点击获取可复现的 Coach Agent 演示提示；服务端版本可安全切换 DeepSeekProvider。" : "AI 教练已接入 MockProvider，可通过后端环境变量切换 DeepSeekProvider。")}</p>
-          </div>
-        </aside>
       </section>
     </main>
   );
