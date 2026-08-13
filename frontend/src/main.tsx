@@ -7,12 +7,15 @@ import "./styles.css";
 
 const queryClient = new QueryClient();
 
-const router = createBrowserRouter([
-  {
-    path: "/",
-    element: <App />
-  }
-]);
+const router = createBrowserRouter(
+  [
+    {
+      path: "/",
+      element: <App />
+    }
+  ],
+  { basename: import.meta.env.BASE_URL }
+);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -21,4 +24,3 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </QueryClientProvider>
   </React.StrictMode>
 );
-
