@@ -524,6 +524,26 @@ Git release state: the public source repository is `https://github.com/zhengupup
 - The UI explicitly labels this behavior as a competition demonstration. It does not claim browser responses are live DeepSeek output, and the real DeepSeek key/provider remain server-only.
 - Normal local/server builds keep `VITE_DEMO_MODE=false` and continue using FastAPI authentication, database persistence, and backend-authoritative rules.
 
+## 25. Guided Competition Interaction (2026-08-13)
+
+- Simplified the student competition experience to one primary path: choose a scenario, start, execute the single recommended next action, submit, and read the report.
+- Replaced the dense action grid with a progress timeline and one context-aware action button. Conditional high-value review/authorization steps remain calculated from the rule policy and are inserted in the correct order.
+- Coach Agent feedback now appears automatically after every operation; the separate hint button and duplicated rule-status panel were removed.
+- Example business data is prefilled and collapsed by default. Judges can still expand and change it to demonstrate identity, balance, and risk-rule failures.
+- Customer interaction starts with a one-click response; free-form conversation remains available as an optional expandable control.
+- Removed history, planner, and ability-analysis panels from the main competition flow to reduce cognitive load. Their APIs and backend capabilities remain available for later dedicated result pages.
+
+Verification:
+
+```bash
+cd frontend
+pnpm build
+VITE_DEMO_MODE=true VITE_BASE_PATH=/ai-banksim/ pnpm build
+# Both builds succeeded
+```
+
+Local browser end-to-end verification completed the six-step account-opening flow through the guided button and produced a passing 100-point Examiner report.
+
 ## 17. Alembic Initial Migration Stage (2026-08-13)
 
 - Added a complete Alembic environment and initial revision `20260813_0001` for all 11 domain tables and their current indexes/foreign keys.
