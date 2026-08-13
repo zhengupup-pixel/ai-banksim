@@ -83,6 +83,15 @@ Never create a GitHub Actions variable whose name or value exposes the DeepSeek 
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the release checklist and limitations.
 
+### Competition demo mode
+
+The public GitHub Pages build sets `VITE_DEMO_MODE=true`. It opens directly in a
+no-login competition experience and runs six scenarios, deterministic browser-side
+rule checks, reproducible customer/coach/examiner responses, reports, history, and
+planning without a hosted API. This is deliberately labelled as a demonstration;
+real DeepSeek calls, persistence, authentication, and authoritative production rule
+execution remain in the FastAPI backend and never expose server secrets to the browser.
+
 Database schema changes are managed by Alembic. For a disposable development
 database created by an older version, delete the ignored `backend/ai_banksim.sqlite3`
 file and run `alembic upgrade head`. If an existing database contains data that

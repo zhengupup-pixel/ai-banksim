@@ -516,6 +516,14 @@ Docker was not available in the development workstation, so image construction m
 
 Git release state: the public source repository is `https://github.com/zhengupup-pixel/ai-banksim`. GitHub cloud CI passed for both backend and frontend, Pages deployment succeeded, and the login UI was verified at `https://zhengupup-pixel.github.io/ai-banksim/`. The Pages subpath required `createBrowserRouter(..., { basename: import.meta.env.BASE_URL })`; this fix is included locally and remotely. Pages remains frontend-only until its repository variable `VITE_API_BASE_URL` points to a public FastAPI deployment.
 
+## 24. No-login Competition Demo (2026-08-13)
+
+- The public Pages artifact now builds with `VITE_DEMO_MODE=true` and opens directly in the student training console; judges do not need credentials.
+- Added six browser-local competition scenarios with prefilled example business data and deterministic validation for required steps, order, identity/account matches, balance checks, and conditional large-transaction authorization.
+- Added reproducible Customer, Coach, Examiner, and Planner demonstration responses plus session-local history and ability analysis, so the entire product loop remains interactive without a hosted API.
+- The UI explicitly labels this behavior as a competition demonstration. It does not claim browser responses are live DeepSeek output, and the real DeepSeek key/provider remain server-only.
+- Normal local/server builds keep `VITE_DEMO_MODE=false` and continue using FastAPI authentication, database persistence, and backend-authoritative rules.
+
 ## 17. Alembic Initial Migration Stage (2026-08-13)
 
 - Added a complete Alembic environment and initial revision `20260813_0001` for all 11 domain tables and their current indexes/foreign keys.

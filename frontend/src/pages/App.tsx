@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, CalendarRange, CheckCircle2, FileCheck2, History, Landmark, MessageCircle, Play, RefreshCw, Send, ShieldCheck, TrendingUp } from "lucide-react";
-import { api, setAccessToken } from "../api/client";
+import { api, isDemoMode, setAccessToken } from "../api/client";
+import { demoUser } from "../demo/demoApi";
 import { Metric } from "../components/Metric";
 import { TeacherDashboard } from "./TeacherDashboard";
 import type { AuthUser, ConversationMessage, FinalTrainingReport, RuleCheckResult, TrainingSession } from "../types/training";
@@ -36,7 +37,7 @@ const stepLabels: Record<string, string> = {
 
 export function App() {
   const queryClient = useQueryClient();
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(isDemoMode ? demoUser : null);
   const [username, setUsername] = useState("demo_student");
   const [password, setPassword] = useState("Student123!");
   const [loginError, setLoginError] = useState("");
@@ -87,6 +88,7 @@ export function App() {
   });
 
   const logout = async () => {
+    if (isDemoMode) return;
     try { await api.logout(); } finally {
       setAccessToken(null);
       setAuthUser(null);
@@ -103,7 +105,7 @@ export function App() {
       setLatestCheck(null);
       setAgentReply("");
       setFinalReport(null);
-      setBusinessData({});
+      setBusinessData(selectedScenario?.demo_inputs ?? {});
       setConversation([]);
       setCustomerInput("");
       queryClient.invalidateQueries({ queryKey: ["training-history"] });
@@ -167,7 +169,7 @@ export function App() {
 
   const completedCount = useMemo(() => {
     if (!selectedScenario || !latestCheck) return 0;
-    return selectedScenario.expected_steps.length - latestCheck.missing_steps.length;
+    return selectedScenario.expected_steps.filter((step) => !latestCheck.missing_steps.includes(step)).length;
   }, [latestCheck, selectedScenario]);
 
   const allSteps = useMemo(
@@ -243,14 +245,19 @@ export function App() {
           </div>
           <div className="flex items-center gap-2 text-sm text-slate-600">
             <ShieldCheck size={18} className="text-bank" />
-            <span>{authUser.display_name} · {authUser.role}</span>
-            <button className="btn-ghost ml-3 py-1" onClick={logout}>退出</button>
+            <span>{authUser.display_name} · {isDemoMode ? "免登录竞赛演示" : authUser.role}</span>
+            {!isDemoMode && <button className="btn-ghost ml-3 py-1" onClick={logout}>退出</button>}
           </div>
         </div>
       </section>
 
       <section className="mx-auto grid max-w-6xl gap-5 px-6 py-6 lg:grid-cols-[1.3fr_0.7fr]">
         <div className="space-y-5">
+          {isDemoMode && (
+            <div className="border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-800">
+              <strong>Agent 产品比赛演示模式</strong>：无需账号，训练数据仅保留在当前页面。规则评分由浏览器内确定性引擎执行；客户、教练与考官响应为可复现演示，真实 DeepSeek Provider 保留在服务端源码中。
+            </div>
+          )}
           {mutationError && (
             <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {mutationError instanceof Error ? mutationError.message : "操作失败，请稍后重试。"}
@@ -479,7 +486,7 @@ export function App() {
                 获取提示
               </button>
             </div>
-            <p className="mt-3 text-sm leading-6 text-slate-600">{agentReply || "AI 教练已接入 MockProvider，后续可切换 DeepSeekProvider。"}</p>
+            <p className="mt-3 text-sm leading-6 text-slate-600">{agentReply || (isDemoMode ? "点击获取可复现的 Coach Agent 演示提示；服务端版本可安全切换 DeepSeekProvider。" : "AI 教练已接入 MockProvider，可通过后端环境变量切换 DeepSeekProvider。")}</p>
           </div>
         </aside>
       </section>

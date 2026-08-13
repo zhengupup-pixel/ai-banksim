@@ -1,4 +1,5 @@
 import type { AIEvaluation, AbilityAnalysis, AuthUser, ConversationMessage, CustomerMessageResponse, FinalTrainingReport, LoginResponse, RuleCheckResult, Scenario, ScenarioVersion, StoredTrainingReport, TrainingHistoryItem, TrainingPlan, TrainingSession } from "../types/training";
+import { demoApi } from "../demo/demoApi";
 
 const jsonHeaders = { "Content-Type": "application/json" };
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -21,7 +22,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export const api = {
+const serverApi = {
   health: () => request<{ status: string; service: string }>("/api/health"),
   seed: () => request<{ seeded: boolean }>("/api/dev/seed", { method: "POST" }),
   login: (username: string, password: string) =>
@@ -77,3 +78,6 @@ export const api = {
       body: JSON.stringify({ session_id: sessionId, agent_name: agentName, learner_message: learnerMessage })
     })
 };
+
+export const isDemoMode = import.meta.env.VITE_DEMO_MODE === "true";
+export const api = isDemoMode ? demoApi : serverApi;

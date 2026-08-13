@@ -8,6 +8,7 @@ export type Scenario = {
   risk_rules: Record<string, unknown>;
   rule_policy: RulePolicy;
   customer_profile: CustomerProfile;
+  demo_inputs?: Record<string, string | number>;
 };
 
 export type CustomerProfile = {
@@ -40,6 +41,12 @@ export type RulePolicy = {
     before_step?: string | null;
     order_message?: string | null;
   }>;
+  field_matches?: Array<{
+    left_field: string;
+    right_field: string;
+    message: string;
+  }>;
+  balance_rules?: Array<{ message: string }>;
 };
 
 export type RuleCheckResult = {

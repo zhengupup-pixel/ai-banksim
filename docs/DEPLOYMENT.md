@@ -8,7 +8,9 @@ AI BankSim has two deployable parts:
 2. FastAPI, SQLite/PostgreSQL, and all DeepSeek calls run on a server or container host.
 
 GitHub Pages does not execute Python services. A Pages release without `VITE_API_BASE_URL`
-is only a frontend artifact and cannot log in or run training sessions.
+can run the explicitly labelled competition demonstration when `VITE_DEMO_MODE=true`.
+That mode is session-local and reproducible; it does not claim to be the hosted FastAPI
+or real DeepSeek service.
 
 ## Local container deployment
 
@@ -28,6 +30,7 @@ The workflow `.github/workflows/pages.yml` builds with:
 
 - `VITE_BASE_PATH=/<repository-name>/`
 - `VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }}`
+- `VITE_DEMO_MODE=true` for the public competition experience
 
 Repository setup:
 
